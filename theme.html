@@ -120,12 +120,24 @@
   function fitTitle() {
     titleEl.classList.remove('scroll');
     titleEl.style.removeProperty('--dx');
-    const over = titleEl.offsetWidth - mq.clientWidth;
-    if (over > 4) {
-      titleEl.style.setProperty('--dx', -(over + 24) + 'px');
+    titleEl.style.removeProperty('animation-duration');
+    // marge de 28 px : zone du fondu à droite, sinon les derniers caractères sont mangés
+    const over = titleEl.offsetWidth - (mq.clientWidth - 28);
+    if (over > 0) {
+      titleEl.style.setProperty('--dx', -(over + 28) + 'px');
       titleEl.style.animationDuration = Math.max(6, over / 60 + 4) + 's';
       titleEl.classList.add('scroll');
     }
+  }
+
+  // Remesure quand la police finit de charger ou que la largeur du titre change
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTitle);
+  if (window.ResizeObserver) {
+    let lastW = 0;
+    new ResizeObserver(() => {
+      const w = titleEl.offsetWidth;
+      if (w !== lastW && !titleEl.classList.contains('scroll')) { lastW = w; fitTitle(); }
+    }).observe(titleEl);
   }
 
   function render(t) {
@@ -156,6 +168,7 @@
     if (np.classList.contains('show')) await out();
     if (!key) return;
     render(t);
+    try { await document.fonts.load('italic 700 32px "Barlow Condensed"', t.title); } catch {}
     await nextFrame();
     fitTitle();
     np.className = 'np show';
