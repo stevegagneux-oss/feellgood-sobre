@@ -1,0 +1,11 @@
+{
+  "name": "feellgood-sobre",
+  "version": "1.0.0",
+  "description": "Overlay Now Playing sobre aux couleurs de FEELLGOOD (noir et orange)",
+  "author": "FEELLGOOD",
+  "license": "MIT",
+  "orpheus": {
+    "displayName": "FEELLGOOD Sobre",
+    "author": "FEELLGOOD"
+  }
+}

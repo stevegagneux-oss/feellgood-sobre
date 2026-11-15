@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>FEELLGOOD — Now Playing sobre (thème Orpheus)</title>
+<!--
+  Thème Orpheus "FEELLGOOD sobre" : plaque noire unie, liseré orange, typo italique condensée.
+  OBS : Source Navigateur -> http://localhost:4242/now-playing  (largeur 1920, hauteur 1080)
+
+  Paramètres d'URL optionnels :
+    ?demo            affiche un faux titre pour régler le style sans Orpheus
+    ?demo=long       idem avec un titre très long (test du défilement)
+    ?duration=15     masque l'overlay 15 s après chaque nouveau titre (0 = toujours visible)
+    ?scale=1.25      agrandit tout l'overlay
+    ?bg=%23222       fond de prévisualisation dans un navigateur (jamais dans OBS)
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,500;1,600;1,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --orange: #ff6a00;
+    --ink: #0b0b0b;
+    --paper: #f4f1ea;
+    --muted: #b9b3a8;
+    --cond: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
+
+  .np {
+    position: fixed; left: 56px; bottom: 56px;
+    width: 520px; height: 104px;
+    opacity: 0; pointer-events: none;
+    will-change: transform, opacity;
+  }
+  .np.show { animation: in .5s cubic-bezier(.2, .8, .2, 1) forwards; }
+  .np.hide { animation: out .35s ease-in forwards; }
+  @keyframes in  { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+  @keyframes out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-24px); } }
+
+  .plate {
+    position: absolute; inset: 0;
+    background: rgba(11, 11, 11, .92);
+    border-left: 4px solid var(--orange);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+  }
+  .content {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; gap: 18px;
+    padding: 0 22px 0 16px;
+  }
+  .art {
+    flex: none; width: 72px; height: 72px;
+    background: #181818; overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .12);
+  }
+  .art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .label {
+    font: italic 600 14px/1 var(--cond);
+    letter-spacing: .26em; text-transform: uppercase; color: var(--orange);
+  }
+  .mq {
+    overflow: hidden; white-space: nowrap;
+    -webkit-mask-image: linear-gradient(90deg, #000 94%, transparent);
+            mask-image: linear-gradient(90deg, #000 94%, transparent);
+  }
+  .mq > span { display: inline-block; will-change: transform; }
+  .mq > span.scroll { animation: ping linear infinite alternate; }
+  @keyframes ping {
+    0%, 14%   { transform: translateX(0); }
+    86%, 100% { transform: translateX(var(--dx)); }
+  }
+  .title {
+    font: italic 700 32px/1.1 var(--cond);
+    letter-spacing: .02em; color: var(--paper); padding-right: 6px;
+  }
+  .artist {
+    font: italic 500 21px/1.1 var(--cond);
+    letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+</style>
+</head>
+<body>
+  <div class="np" id="np">
+    <div class="plate"></div>
+    <div class="content">
+      <div class="art" id="artBox"><img id="art" alt=""></div>
+      <div class="info">
+        <div class="label">En écoute</div>
+        <div class="mq" id="mq"><span class="title" id="title"></span></div>
+        <div class="artist" id="artist"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const duration = Math.max(0, parseFloat(q.get('duration')) || 0);
+  if (q.get('scale')) document.documentElement.style.zoom = q.get('scale');
+  if (q.get('bg')) document.body.style.background = q.get('bg');
+
+  const np = document.getElementById('np');
+  const mq = document.getElementById('mq');
+  const titleEl = document.getElementById('title');
+  const artistEl = document.getElementById('artist');
+  const artBox = document.getElementById('artBox');
+  const artImg = document.getElementById('art');
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const nextFrame = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  let current = '';
+  let hideTimer = null;
+
+  function fitTitle() {
+    titleEl.classList.remove('scroll');
+    titleEl.style.removeProperty('--dx');
+    const over = titleEl.offsetWidth - mq.clientWidth;
+    if (over > 4) {
+      titleEl.style.setProperty('--dx', -(over + 24) + 'px');
+      titleEl.style.animationDuration = Math.max(6, over / 60 + 4) + 's';
+      titleEl.classList.add('scroll');
+    }
+  }
+
+  function render(t) {
+    titleEl.textContent = t.title;
+    artistEl.textContent = t.artist || '';
+    const cover = t.coverUrl || t.artwork;
+    if (cover) {
+      artBox.style.display = 'block';
+      artImg.onerror = () => { artBox.style.display = 'none'; };
+      artImg.src = cover;
+    } else {
+      artBox.style.display = 'none';
+    }
+  }
+
+  async function out() {
+    np.className = 'np hide';
+    await sleep(350);
+    np.className = 'np';
+  }
+
+  async function update(t) {
+    const playing = t && t.title && t.playing !== false && t.isPlaying !== false;
+    const key = playing ? `${t.title}|${t.artist || ''}` : '';
+    if (key === current) return;
+    current = key;
+    clearTimeout(hideTimer);
+    if (np.classList.contains('show')) await out();
+    if (!key) return;
+    render(t);
+    await nextFrame();
+    fitTitle();
+    np.className = 'np show';
+    if (duration > 0) {
+      hideTimer = setTimeout(() => { if (current === key) out(); }, duration * 1000 + 550);
+    }
+  }
+
+  // File d'attente : évite les chevauchements si plusieurs événements arrivent d'un coup
+  let chain = Promise.resolve();
+  const enqueue = t => { chain = chain.then(() => update(t)).catch(() => {}); };
+
+  // d peut être un objet piste, ou null/vide quand plus rien ne joue
+  function handle(d) {
+    const t = d && (d.track || d.data) || d;
+    if (!t || typeof t === 'object') enqueue(t || null);
+  }
+  function onTrack(raw) {
+    let d;
+    try { d = JSON.parse(raw); } catch { return; }
+    handle(d);
+  }
+
+  if (q.has('demo')) {
+    const art = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><rect width='200' height='200' fill='#ff6a00'/>" +
+      "<circle cx='100' cy='100' r='46' fill='#0b0b0b'/></svg>");
+    const long = q.get('demo') === 'long';
+    enqueue({
+      title: long ? 'Un titre vraiment très long pour tester le défilement automatique du texte' : 'Lucky Girl Syndrome',
+      artist: 'ILLIT',
+      coverUrl: art
+    });
+    return;
+  }
+
+  const base = location.protocol.startsWith('http') ? '' : 'http://localhost:4242';
+
+  // État courant au chargement (sinon l'overlay reste vide jusqu'au prochain titre)
+  let gotEvent = false;
+  fetch(base + '/api/now-playing')
+    .then(r => r.json())
+    .then(d => { if (!gotEvent) handle(d); })
+    .catch(() => {});
+
+  // Flux d'événements d'Orpheus, avec reconnexion
+  function connect() {
+    const es = new EventSource(base + '/api/stream');
+    es.addEventListener('track', ev => { gotEvent = true; onTrack(ev.data); });
+    es.onerror = () => { es.close(); setTimeout(connect, 2000); };
+  }
+  connect();
+})();
+</script>
+</body>
+</html>
